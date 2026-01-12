@@ -1,0 +1,10 @@
+.env
+logs/
+samples/
+traces/
+metrics/
+repos/
+findings/
+lessons/
+incidents/
+scripts/
