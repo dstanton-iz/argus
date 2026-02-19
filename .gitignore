@@ -1,11 +1,42 @@
+# Environment
 .env
+.env.local
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# macOS
+.DS_Store
+
+# Argus run data (raw logs and findings live here)
+runs/
+
+# Legacy v1 directories (no longer used)
 logs/
 samples/
 traces/
 metrics/
 repos/
 findings/
-lessons/
 incidents/
 scripts/
-.DS_Store
+
+# Note: lessons/ is NOT gitignored - it is institutional memory

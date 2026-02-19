@@ -1,53 +1,75 @@
 # Argus
 
-> The hundred-eyed exception analyst
+> AI-powered exception analysis CLI
 
 ## What This Is
 
-A workspace for analyzing production exceptions using log data, request/response samples, and application source code. Track trends over time to measure improvement.
+A CLI tool that queries Watchtower (local LGTM stack) for error data, runs AI analysis, and produces actionable findings. Designed for fast feedback loops during development.
 
-## Structure
+## Architecture
 
-- `logs/{ERROR_CODE}/` - Weekly exception CSVs organized by error catalog code
-- `samples/` - Request/response JSON files named by request ID
-- `traces/` - Distributed traces as JSON, named by trace ID
-- `metrics/` - Aggregated vitals and per-error-code trends
-- `repos/` - Cloned application codebases
-- `findings/` - Analysis notes and recommendations per error code
-- `lessons/` - Reusable patterns extracted from analysis (check these during incidents!)
-- `incidents/` - Time-boxed folders for live incident investigations
+```
+argus/
+├── cli.py           # Click commands (status, run, analyze, runs, findings, score, lessons)
+├── config.py        # Settings from environment variables
+├── models.py        # Run, Finding, EvalScore dataclasses
+├── db.py            # SQLite for run metadata (~/.argus/argus.db)
+├── output.py        # Rich terminal rendering
+├── analysis.py      # LLM prompt construction and response parsing
+└── sources/
+    └── watchtower.py   # Async clients for Loki, Tempo, Prometheus, SonarQube
+```
 
-## Credentials
+## Data Flow
 
-The `.env` file contains credentials for observability platforms. Use these to query logs, traces, and metrics directly via API or MCP servers.
+1. `argus run` queries Loki (logs) and Tempo (traces) for errors
+2. Data is saved to `runs/{run_id}/logs/` and `runs/{run_id}/traces/` as CSVs
+3. `analysis.py` builds a prompt with logs + traces + lessons
+4. LLM response is parsed into Finding objects and saved to SQLite + markdown
+5. `argus findings {run_id}` displays results
 
-## Cross-Referencing
+## Key Commands
 
-Log entries may contain:
-- `request_id` - Check `samples/` for matching request/response payloads
-- `trace_id` - Check `traces/` for the full distributed trace
+```bash
+argus status              # Health check all services
+argus run                 # New analysis run (interactive)
+argus runs                # List recent runs
+argus findings <run_id>   # Show findings
+argus analyze <run_id>    # Re-run analysis on existing data
+argus score <run_id>      # Rate findings 1-5 (eval workflow)
+argus lessons             # List/promote institutional memory
+```
 
-## Analysis Workflow
+## External Dependencies
 
-1. Check `metrics/vitals.csv` for overall trends - are things getting better or worse?
-2. Pick an error code to investigate (e.g., E001 for uncaught exceptions)
-3. Look at `metrics/{ERROR_CODE}/trend.csv` to see trajectory
-4. Look at the latest CSV in `logs/{ERROR_CODE}/`
-5. Identify top exceptions by count or week-over-week increase
-6. Find the relevant operation in `repos/`
-7. If a request_id is available, check `samples/` for I/O context
-8. If a trace_id is available, check `traces/` to see the full request path
-9. Analyze the code path and suggest:
-   - Input validation or guard clauses
-   - Better error handling
-   - Tests that would catch this failure mode
-10. Document findings in `findings/{ERROR_CODE}/{date}.md`
-11. After fixes ship, update `metrics/` to track impact
+- **Watchtower stack** - Loki:3100, Tempo:3200, Prometheus:9090, SonarQube:9000
+- **llm library** - Model-agnostic AI calls (Simon Willison's library)
+- **SQLite** - Run/finding/eval metadata at `~/.argus/argus.db`
 
-## Key Questions To Answer
+## Testing
 
-- What input conditions could cause this exception?
-- Is there missing validation at the entry point?
-- Should this operation handle this case explicitly rather than throwing?
-- What test cases would prevent regression?
-- Are our fixes actually reducing exception counts?
+All tests use `pytest` with `unittest.mock`. No live API calls or model calls.
+
+```bash
+make test   # 89 tests
+make lint   # ruff check
+```
+
+## Important Files
+
+- `lessons/` - Markdown files included in analysis prompts (institutional memory)
+- `runs/` - Gitignored, contains raw data per run
+- `.env` - Watchtower URLs and model config (gitignored)
+
+## Adding Features
+
+When modifying analysis:
+1. Update `SYSTEM_PROMPT` in `analysis.py` for LLM instructions
+2. Update `build_analysis_prompt()` for input formatting
+3. Update `parse_findings_response()` for output parsing
+4. Add tests that mock `llm.get_model`
+
+When adding CLI commands:
+1. Add to `cli.py` with `@cli.command()` decorator
+2. Use `print_info/success/error/warning` from output.py
+3. Use async functions wrapped with `asyncio.run()` for API calls
