@@ -13,6 +13,9 @@ from .db import create_finding, get_run, update_run_status
 from .models import Finding, Severity
 from .output import print_error, print_info, print_success
 
+# Separator used when emitting prompt-only output
+PROMPT_SEPARATOR = "─" * 72
+
 SYSTEM_PROMPT = """You are Argus, an expert exception analyst for software engineering teams.
 Your job is to analyze exception data from observability platforms and provide actionable fix recommendations.
 
@@ -296,6 +299,66 @@ def save_finding_to_disk(finding: Finding, run_dir: Path) -> None:
 """
 
     filepath.write_text(content)
+
+
+def build_prompt_for_run(
+    run_id: str,
+    sonarqube_issues: list[dict[str, Any]] | None = None,
+) -> tuple[str, str] | None:
+    """
+    Build the full prompt for a run without calling the LLM.
+
+    Args:
+        run_id: The run ID to build a prompt for
+        sonarqube_issues: Optional SonarQube issues
+
+    Returns:
+        Tuple of (system_prompt, user_prompt) or None if no data
+    """
+    run = get_run(run_id)
+    if not run:
+        print_error(f"Run not found: {run_id}")
+        return None
+
+    run_dir = Path(run.run_dir)
+    if not run_dir.exists():
+        print_error(f"Run directory not found: {run_dir}")
+        return None
+
+    logs = load_logs_from_run(run_dir)
+    traces = load_traces_from_run(run_dir)
+    lessons = load_lessons()
+    code_context = load_code_context(run_dir)
+
+    if not logs and not traces:
+        print_error("No log or trace data found for this run")
+        return None
+
+    print_info(f"Found {len(logs)} logs, {len(traces)} traces, {len(lessons)} lessons")
+
+    prompt = build_analysis_prompt(
+        logs=logs,
+        traces=traces,
+        sonarqube_issues=sonarqube_issues or [],
+        lessons=lessons,
+        code_context=code_context,
+    )
+
+    return SYSTEM_PROMPT, prompt
+
+
+def format_full_prompt(system_prompt: str, user_prompt: str) -> str:
+    """Format system + user prompt for copy-paste into Claude Code."""
+    return (
+        f"{PROMPT_SEPARATOR}\n"
+        f"SYSTEM PROMPT\n"
+        f"{PROMPT_SEPARATOR}\n\n"
+        f"{system_prompt}\n\n"
+        f"{PROMPT_SEPARATOR}\n"
+        f"ANALYSIS DATA\n"
+        f"{PROMPT_SEPARATOR}\n\n"
+        f"{user_prompt}\n"
+    )
 
 
 async def analyze_run(run_id: str, sonarqube_issues: list[dict[str, Any]] | None = None) -> list[Finding]:

@@ -8,14 +8,18 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from argus.analysis import (
+    PROMPT_SEPARATOR,
+    SYSTEM_PROMPT,
     build_analysis_prompt,
+    build_prompt_for_run,
     check_model_available,
+    format_full_prompt,
     load_lessons,
     load_logs_from_run,
     load_traces_from_run,
     parse_findings_response,
 )
-from argus.models import Severity
+from argus.models import Run, Severity
 
 
 class TestBuildAnalysisPrompt:
@@ -495,3 +499,87 @@ class TestAnalyzeRun:
                             findings = await analyze_run("test-run-003")
 
             assert findings == []
+
+
+class TestFormatFullPrompt:
+    """Test prompt formatting for copy-paste output."""
+
+    def test_format_includes_both_prompts(self) -> None:
+        """format_full_prompt includes system and user prompt sections."""
+        output = format_full_prompt("You are an analyst.", "Here are some logs.")
+        assert "SYSTEM PROMPT" in output
+        assert "ANALYSIS DATA" in output
+        assert "You are an analyst." in output
+        assert "Here are some logs." in output
+
+    def test_format_uses_separator(self) -> None:
+        """format_full_prompt uses visual separators."""
+        output = format_full_prompt("system", "user")
+        assert PROMPT_SEPARATOR in output
+
+
+class TestBuildPromptForRun:
+    """Test building prompt from a run without calling the LLM."""
+
+    def test_returns_prompts_with_data(self) -> None:
+        """build_prompt_for_run returns system and user prompt tuple."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            run_dir = Path(tmpdir)
+            logs_dir = run_dir / "logs"
+            logs_dir.mkdir()
+            (logs_dir / "errors.csv").write_text(
+                "timestamp,line,service_name\n2024-01-01,Error: DB failed,api\n"
+            )
+
+            mock_run = Run(
+                run_id="prompt-test-001",
+                run_dir=str(run_dir),
+            )
+
+            with patch("argus.analysis.get_run", return_value=mock_run):
+                with patch("argus.analysis.settings") as mock_settings:
+                    mock_settings.lessons_dir = Path("/nonexistent")
+                    result = build_prompt_for_run("prompt-test-001")
+
+            assert result is not None
+            system_prompt, user_prompt = result
+            assert system_prompt == SYSTEM_PROMPT
+            assert "DB failed" in user_prompt
+
+    def test_returns_none_when_no_data(self) -> None:
+        """build_prompt_for_run returns None when no logs or traces."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            run_dir = Path(tmpdir)
+            mock_run = Run(run_id="prompt-test-002", run_dir=str(run_dir))
+
+            with patch("argus.analysis.get_run", return_value=mock_run):
+                with patch("argus.analysis.settings") as mock_settings:
+                    mock_settings.lessons_dir = Path("/nonexistent")
+                    result = build_prompt_for_run("prompt-test-002")
+
+            assert result is None
+
+    def test_returns_none_when_run_not_found(self) -> None:
+        """build_prompt_for_run returns None for missing run."""
+        with patch("argus.analysis.get_run", return_value=None):
+            result = build_prompt_for_run("nonexistent")
+        assert result is None
+
+    def test_does_not_call_llm(self) -> None:
+        """build_prompt_for_run never imports or calls llm."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            run_dir = Path(tmpdir)
+            logs_dir = run_dir / "logs"
+            logs_dir.mkdir()
+            (logs_dir / "errors.csv").write_text(
+                "timestamp,line\n2024-01-01,Error\n"
+            )
+
+            mock_run = Run(run_id="prompt-test-003", run_dir=str(run_dir))
+
+            with patch("argus.analysis.get_run", return_value=mock_run):
+                with patch("argus.analysis.settings") as mock_settings:
+                    mock_settings.lessons_dir = Path("/nonexistent")
+                    with patch("llm.get_model") as mock_get_model:
+                        build_prompt_for_run("prompt-test-003")
+                        mock_get_model.assert_not_called()

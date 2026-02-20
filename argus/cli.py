@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 import click
 
 from . import __version__
-from .analysis import analyze_run, check_model_available
+from .analysis import analyze_run, build_prompt_for_run, check_model_available, format_full_prompt
 from .config import settings
 from .db import (
     count_findings_for_run,
@@ -129,12 +129,14 @@ def status() -> None:
 @click.option("--error-code", "-c", help="Filter by error code")
 @click.option("--hours", "-h", type=int, default=1, help="Look back N hours (default: 1)")
 @click.option("--skip-analysis", is_flag=True, help="Fetch data only, don't run AI analysis")
+@click.option("--prompt-only", is_flag=True, help="Fetch data, then print the prompt for copy-paste into Claude Code instead of calling the LLM API")
 def run(
     environment: str | None,
     service: str | None,
     error_code: str | None,
     hours: int,
     skip_analysis: bool,
+    prompt_only: bool,
 ) -> None:
     """Start a new analysis run - fetch data and analyze exceptions."""
 
@@ -233,7 +235,12 @@ def run(
             return
 
         # Run analysis
-        if not skip_analysis:
+        if prompt_only:
+            result = build_prompt_for_run(run_record.run_id)
+            if result:
+                system_prompt, user_prompt = result
+                click.echo(format_full_prompt(system_prompt, user_prompt))
+        elif not skip_analysis:
             print_info("Running AI analysis...")
             findings = await analyze_run(run_record.run_id)
 
@@ -258,7 +265,8 @@ def run(
 
 @cli.command()
 @click.argument("run_id")
-def analyze(run_id: str) -> None:
+@click.option("--prompt-only", is_flag=True, help="Print the prompt for copy-paste into Claude Code instead of calling the LLM API")
+def analyze(run_id: str, prompt_only: bool) -> None:
     """Re-run analysis on an existing run's data."""
 
     async def _analyze() -> None:
@@ -276,6 +284,13 @@ def analyze(run_id: str) -> None:
             sys.exit(1)
 
         full_run_id = matching[0].run_id
+
+        if prompt_only:
+            result = build_prompt_for_run(full_run_id)
+            if result:
+                system_prompt, user_prompt = result
+                click.echo(format_full_prompt(system_prompt, user_prompt))
+            return
 
         findings = await analyze_run(full_run_id)
 

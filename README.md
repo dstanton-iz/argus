@@ -62,6 +62,18 @@ argus findings abc12345
 argus findings abc12345 --detail
 ```
 
+### Prompt-Only Mode (Free with Claude Code Max)
+
+```bash
+# Fetch data and copy the prompt to clipboard instead of calling the LLM API
+argus run -e staging --prompt-only | pbcopy
+
+# Or generate the prompt from an existing run
+argus analyze abc12345 --prompt-only | pbcopy
+```
+
+Paste the output into a Claude Code session to get the same analysis quality at no additional API cost. This is ideal for supervised, local development. Reserve direct LLM calls for unsupervised runs (e.g., scheduled in AWS).
+
 ### Re-analyze Existing Data
 
 ```bash
@@ -112,7 +124,7 @@ SONARQUBE_TOKEN=your-token-here
 
 ```bash
 make venv      # Create virtualenv and install dependencies
-make test      # Run test suite (89 tests)
+make test      # Run test suite (95 tests)
 make lint      # Run ruff linter
 make format    # Auto-format code
 make clean     # Remove build artifacts
