@@ -1,6 +1,6 @@
 # Argus
 
-> The hundred-eyed exception analyst
+> AI-powered exception analysis CLI
 
 ## What This Is
 
