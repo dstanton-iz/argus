@@ -1,3 +1,4 @@
+.DS_Store
 .env
 logs/
 samples/
@@ -8,3 +9,5 @@ findings/
 lessons/
 incidents/
 scripts/
+triage/triage.db
+triage/__pycache__/

@@ -26,6 +26,7 @@ The `.env` file contains credentials for observability platforms. Use these to q
 Log entries may contain:
 - `request_id` - Check `samples/` for matching request/response payloads
 - `trace_id` - Check `traces/` for the full distributed trace
+- `session_id` - Ask the user to pull raw request/response logs from observability platforms
 
 ## Analysis Workflow
 
